@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Save Motor Repairs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding-top: 20px; }
+        .hidden { display: none; }
+        
+        /* ทำให้ตารางเลื่อนได้บนมือถือ */
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* ปรับขนาดปุ่มและฟอร์มให้กระชับบนมือถือ */
+        .btn, input, textarea {
+            font-size: 1rem;
+        }
+
+        /* จัดปุ่มให้เรียงซ้อนในจอเล็ก */
+        .btn-group-mobile {
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* ขยายความกว้างของ textarea */
+        textarea {
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-expand-lg bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">Motor Repair Tracker</a>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between flex-wrap btn-group-mobile">
+        <button class="btn btn-primary w-100" onclick="showRecordForm()">Record Issue</button>
+        <button class="btn btn-secondary w-100" onclick="showHistory()">View History</button>
+    </div>
+
+    <!-- ฟอร์มเพิ่ม/แก้ไข -->
+    <div id="recordForm" class="mt-4">
+        <h2 id="formTitle">Record a New Motor Repair Issue</h2>
+        <form id="issueForm">
+            <input type="hidden" id="issueId">
+            <div class="mb-3">
+                <label for="companyName" class="form-label">Company Name</label>
+                <input type="text" class="form-control" id="companyName" required>
+            </div>
+            <div class="mb-3">
+                <label for="motorModel" class="form-label">Motor Model</label>
+                <input type="text" class="form-control" id="motorModel" required>
+            </div>
+            <div class="mb-3">
+                <label for="issueDescription" class="form-label">Issue Description</label>
+                <textarea class="form-control" id="issueDescription" rows="3" required></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="issueDate" class="form-label">Date of Issue</label>
+                <input type="date" class="form-control" id="issueDate" required>
+            </div>
+            <button type="submit" class="btn btn-success w-100">Submit</button>
+        </form>
+    </div>
+
+    <!-- ตารางประวัติ -->
+    <div id="viewHistory" class="mt-4 hidden">
+        <h2>View Repair History</h2>
+        <input type="text" class="form-control mb-3" id="searchCompany" onkeyup="searchIssues()" placeholder="Search for company...">
+        
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Company Name</th>
+                        <th>Motor Model</th>
+                        <th>Issue Description</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="issueList"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db;
+
+    // เปิด IndexedDB
+    const request = indexedDB.open('motorRepairDB', 2);
+
+    request.onupgradeneeded = function(event) {
+        db = event.target.result;
+        if (!db.objectStoreNames.contains('issues')) {
+            db.createObjectStore('issues', { keyPath: 'id', autoIncrement: true });
+        }
+    };
+
+    request.onsuccess = function(event) {
+        db = event.target.result;
+        loadIssues();
+    };
+
+    request.onerror = function(event) {
+        alert('Database not loaded!');
+    };
+
+    function saveIssue(issue) {
+        if (!db) return;
+
+        const transaction = db.transaction(['issues'], 'readwrite');
+        const store = transaction.objectStore('issues');
+
+        delete issue.id;
+
+        const request = store.add(issue);
+
+        request.onsuccess = () => {
+            alert('Issue saved successfully!');
+            loadIssues();
+            showHistory();
+        };
+
+        request.onerror = (event) => {
+            alert('Failed to save issue: ' + event.target.error);
+        };
+    }
+
+    function loadIssues() {
+        if (!db) return;
+
+        const transaction = db.transaction(['issues'], 'readonly');
+        const store = transaction.objectStore('issues');
+        const request = store.getAll();
+
+        request.onsuccess = function() {
+            const sortedIssues = request.result.sort((a, b) => new Date(a.issueDate) - new Date(b.issueDate));
+            displayIssues(sortedIssues);
+        };
+    }
+
+    function deleteIssue(id) {
+        if (confirm('Are you sure you want to delete this issue?')) {
+            const transaction = db.transaction(['issues'], 'readwrite');
+            const store = transaction.objectStore('issues');
+            store.delete(id);
+            transaction.oncomplete = loadIssues;
+        }
+    }
+
+    function editIssue(id) {
+        const transaction = db.transaction(['issues'], 'readonly');
+        const store = transaction.objectStore('issues');
+        const request = store.get(id);
+
+        request.onsuccess = function() {
+            const issue = request.result;
+            document.getElementById('issueId').value = issue.id;
+            document.getElementById('companyName').value = issue.companyName;
+            document.getElementById('motorModel').value = issue.motorModel;
+            document.getElementById('issueDescription').value = issue.issueDescription;
+            document.getElementById('issueDate').value = issue.issueDate;
+            document.getElementById('formTitle').innerText = 'Edit Motor Repair Issue';
+            showRecordForm();
+        };
+    }
+
+    function displayIssues(issues) {
+        const issueList = document.getElementById('issueList');
+        issueList.innerHTML = '';
+
+        issues.forEach(issue => {
+            issueList.innerHTML += `
+                <tr>
+                    <td>${issue.companyName}</td>
+                    <td>${issue.motorModel}</td>
+                    <td>${issue.issueDescription}</td>
+                    <td>${issue.issueDate}</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm" onclick="editIssue(${issue.id})">Edit</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteIssue(${issue.id})">Delete</button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    function showRecordForm() {
+        document.getElementById('recordForm').classList.remove('hidden');
+        document.getElementById('viewHistory').classList.add('hidden');
+    }
+
+    function showHistory() {
+        document.getElementById('viewHistory').classList.remove('hidden');
+        document.getElementById('recordForm').classList.add('hidden');
+        loadIssues();
+    }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,49 @@
+const express = require('express');
+const fs = require('fs');
+const bodyParser = require('body-parser');
+const app = express();
+
+// ตั้งค่า body-parser
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// อ่านไฟล์ JSON ที่เก็บข้อมูลการแจ้งซ่อม
+const filePath = './issues.json';
+
+// API เพื่อบันทึกข้อมูล
+app.post('/submit-issue', (req, res) => {
+  const { companyName, issueDescription, issueDate } = req.body;
+
+  // สร้างอ็อบเจ็กต์สำหรับการแจ้งซ่อมใหม่
+  const newIssue = { companyName, issueDescription, issueDate };
+
+  // อ่านไฟล์ JSON เก่าที่มีอยู่
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+      console.log('Error reading file', err);
+      return res.status(500).send('Error reading file');
+    }
+
+    let issues = [];
+    if (data) {
+      issues = JSON.parse(data);
+    }
+
+    // เพิ่มข้อมูลใหม่ลงไปในอาเรย์
+    issues.push(newIssue);
+
+    // บันทึกข้อมูลใหม่ลงในไฟล์ JSON
+    fs.writeFile(filePath, JSON.stringify(issues, null, 2), (err) => {
+      if (err) {
+        console.log('Error writing to file', err);
+        return res.status(500).send('Error writing to file');
+      }
+      res.send('Issue recorded successfully');
+    });
+  });
+});
+
+// เริ่มเซิร์ฟเวอร์
+app.listen(3000, () => {
+  console.log('Server is running on http://localhost:3000');
+});
